@@ -1,0 +1,1 @@
+# linea_ensamblaje_ipc_sincronizacion_scheduling

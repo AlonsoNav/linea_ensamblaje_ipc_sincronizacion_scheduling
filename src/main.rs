@@ -5,8 +5,10 @@ use std::time::{SystemTime, Duration};
 use std::sync::mpsc;
 use rand::Rng;
 use std::collections::VecDeque;
+use std::io;
 use crate::models::Station;
 use crate::models::Product;
+use crate::models::SchedulingAlgorithm;
 
 const PRODUCT_COUNT: usize = 10;
 const STAGES: &[(&str, usize)] = &[
@@ -14,12 +16,25 @@ const STAGES: &[(&str, usize)] = &[
     ("Ensamblaje", 1500),
     ("Empaque", 800),
 ];
+const DEFAULT_QUANTUM: usize = 500; // Default time quantum for Round Robin (in milliseconds)
 
 fn main() {
     let mut stations: Vec<Station> = Vec::new();
     let mut senders = Vec::new();
     let mut products = Vec::new();
     let mut rng = rand::rng();
+    
+    // Select scheduling algorithm
+    let scheduling_algorithm = select_scheduling_algorithm();
+    
+    // Get quantum for Round Robin if that algorithm is selected
+    let quantum = match scheduling_algorithm {
+        SchedulingAlgorithm::RoundRobin => {
+            println!("Ingrese el quantum para Round Robin (milliseconds) o presione Enter para usar el valor predeterminado {}):", DEFAULT_QUANTUM);
+            read_quantum()
+        },
+        _ => DEFAULT_QUANTUM, // Default value, not used for FCFS
+    };
 
     // Main channel
     let (main_sender, main_receiver) = mpsc::channel();
@@ -32,6 +47,8 @@ fn main() {
             processing_time,
             Arc::new(Mutex::new(rx)), 
             None, // Sender is set later 
+            scheduling_algorithm,
+            quantum,
         );
         
         if let Some(last_station) = stations.last_mut() {
@@ -56,6 +73,7 @@ fn main() {
             id: i,
             arrival_time,
             processing_steps: vec![],
+            remaining_time: None, // Will be initialized at each station
         };
         products.push(product);
     }
@@ -83,5 +101,43 @@ fn main() {
     for _ in 1..=PRODUCT_COUNT {
         let processed_product = main_receiver.recv().unwrap();
         println!("Producto procesado: {}", processed_product.id);
+    }
+}
+
+// Function to let the user select the scheduling algorithm
+fn select_scheduling_algorithm() -> SchedulingAlgorithm {
+    println!("\nSeleccione el algoritmo de planificación:");
+    println!("1. FCFS (First Come First Serve)");
+    println!("2. Round Robin");
+    
+    loop {
+        println!("Ingrese su elección (1 o 2):");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("Error al leer la entrada");
+        
+        match input.trim() {
+            "1" => return SchedulingAlgorithm::FCFS,
+            "2" => return SchedulingAlgorithm::RoundRobin,
+            _ => println!("Opción inválida, intente de nuevo."),
+        }
+    }
+}
+
+// Function to read quantum value for Round Robin
+fn read_quantum() -> usize {
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).expect("Error al leer la entrada");
+    
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return DEFAULT_QUANTUM;
+    }
+    
+    match trimmed.parse::<usize>() {
+        Ok(value) if value > 0 => value,
+        _ => {
+            println!("Valor inválido, usando el valor predeterminado: {}", DEFAULT_QUANTUM);
+            DEFAULT_QUANTUM
+        }
     }
 }

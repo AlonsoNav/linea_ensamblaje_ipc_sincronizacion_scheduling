@@ -18,9 +18,11 @@ pub struct Product {
 
 #[derive(Debug, Clone)]
 pub struct ProcessingStep {
+    pub station_name: String,
     pub entry_time: Option<SystemTime>,
     pub exit_time: Option<SystemTime>,
 }
+
 
 #[derive(Clone)]
 pub struct Station {
@@ -82,8 +84,15 @@ impl Station {
                 match self.scheduling_algorithm {
                     SchedulingAlgorithm::FCFS => {
                         println!("Estación {} procesando producto {} (FCFS)", self.name, product.id);
+                        let entry_time = SystemTime::now();
                         thread::sleep(Duration::from_millis(self.processing_time as u64));
                         println!("Estación {} terminó de procesar producto {} (FCFS)", self.name, product.id);
+                        let exit_time = SystemTime::now();
+                        product.processing_steps.push(ProcessingStep {
+                            station_name: self.name.clone(),
+                            entry_time: Some(entry_time),
+                            exit_time: Some(exit_time),
+                        });
                         let product_to_send = product.clone();
                         self.sender.as_ref().unwrap().send(product_to_send).unwrap();
                         processed = true;
@@ -106,11 +115,18 @@ impl Station {
                     if !processed && new_product.is_none() {
                         let receiver_lock = self.receiver.lock().unwrap();
                         match receiver_lock.recv() {
-                            Ok(p) => {
+                            Ok(mut p) => {
                                 drop(receiver_lock);
                                 println!("Estación {} procesando producto {} (FCFS - bloqueante)", self.name, p.id);
+                                let entry_time = SystemTime::now();
                                 thread::sleep(Duration::from_millis(self.processing_time as u64));
                                 println!("Estación {} terminó de procesar producto {} (FCFS - bloqueante)", self.name, p.id);
+                                let exit_time = SystemTime::now();
+                                p.processing_steps.push(ProcessingStep {
+                                    station_name: self.name.clone(),
+                                    entry_time: Some(entry_time),
+                                    exit_time: Some(exit_time),
+                                });
                                 self.sender.as_ref().unwrap().send(p).unwrap();
                             }
                             Err(_) => break,
@@ -129,7 +145,20 @@ impl Station {
                         println!("Estación {} procesando producto {} por {}ms (tiempo restante: {}ms)", 
                                  self.name, product.id, process_time, remaining);
                         
+                        let entry_time = SystemTime::now();
                         thread::sleep(Duration::from_millis(process_time as u64));
+                        let exit_time = SystemTime::now();
+
+                        if let Some(existing_step) = product.processing_steps.iter_mut().find(|s| s.station_name == self.name) {
+                            existing_step.exit_time = Some(exit_time); // Actualizamos el tiempo final
+                        } else {
+                            // Primer quantum en esta estación
+                            product.processing_steps.push(ProcessingStep {
+                                station_name: self.name.clone(),
+                                entry_time: Some(entry_time),
+                                exit_time: Some(exit_time),
+                            });
+                        }
                         
                         let new_remaining = remaining.saturating_sub(process_time);
                         product.remaining_time = Some(new_remaining);

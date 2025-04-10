@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::io;
 use crate::models::Station;
 use crate::models::Product;
+use crate::models::ProcessingStep;
 use crate::models::SchedulingAlgorithm;
 
 const PRODUCT_COUNT: usize = 10;
@@ -97,11 +98,90 @@ fn main() {
         }
     }
 
+    let mut processed_products = Vec::new();
+
     // Get the products processed by the main channel
     for _ in 1..=PRODUCT_COUNT {
         let processed_product = main_receiver.recv().unwrap();
-        println!("Producto procesado: {}", processed_product.id);
+        println!("\nProducto {} procesado.", processed_product.id);
+        // println!(
+        //     "Producto procesado: ID: {}, Hora de llegada: {:?}, Pasos de procesamiento: {:?}, Tiempo restante: {:?}",
+        //     processed_product.id,
+        //     processed_product.arrival_time,
+        //     processed_product.processing_steps,
+        //     processed_product.remaining_time
+        // );
+        processed_products.push(processed_product.clone());
     }
+
+    println!("\n--- Resumen Final ---");
+    
+    let mut total_wait_sum = 0.0;
+    let mut total_turnaround_sum = 0.0;
+    let mut orden_final: Vec<usize> = Vec::new();
+    
+    for product in &processed_products {
+        if product.processing_steps.is_empty() {
+            println!("\nProducto {} no tiene pasos registrados.", product.id);
+            continue;
+        }
+    
+        orden_final.push(product.id);
+    
+        let turnaround = product
+            .processing_steps
+            .last()
+            .unwrap()
+            .exit_time
+            .unwrap()
+            .duration_since(product.arrival_time)
+            .unwrap()
+            .as_secs_f64();
+    
+        println!("\nProducto {}", product.id);
+        println!("Tiempo de llegada: {:.1}s", 0.0);
+    
+        let mut total_wait = 0.0;
+    
+        for (i, step) in product.processing_steps.iter().enumerate() {
+            let entry = step.entry_time.unwrap().duration_since(product.arrival_time).unwrap().as_secs_f64();
+            let exit = step.exit_time.unwrap().duration_since(product.arrival_time).unwrap().as_secs_f64();
+        
+            let prev_exit = if i == 0 {
+                0.0
+            } else {
+                product.processing_steps[i - 1]
+                    .exit_time
+                    .unwrap()
+                    .duration_since(product.arrival_time)
+                    .unwrap()
+                    .as_secs_f64()
+            };
+        
+            total_wait += entry - prev_exit;
+        
+            println!("{}: entrada = {:.3}s, salida = {:.3}s", step.station_name, entry, exit);
+        }
+    
+        println!("Tiempo de espera total: {:.3}s, Turnaround: {:.3}s", total_wait, turnaround);
+    
+        total_wait_sum += total_wait;
+        total_turnaround_sum += turnaround;
+    }
+    
+    let count = processed_products.len() as f64;
+    
+    let avg_wait = total_wait_sum / count;
+    let avg_turnaround = total_turnaround_sum / count;
+    
+    println!("\nPromedio de espera: {:.9}s", avg_wait);
+    println!("Promedio de turnaround: {:.9}s", avg_turnaround);
+    
+    println!("\nOrden final de procesamiento:");
+    for id in orden_final {
+        println!("Producto {}", id);
+    }
+    
 }
 
 // Function to let the user select the scheduling algorithm

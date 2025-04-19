@@ -97,9 +97,7 @@ impl Station {
                         continue;
                     },
                     SchedulingAlgorithm::RoundRobin => {
-                        if product.remaining_time.is_none() {
-                            product.remaining_time = Some(self.processing_time);
-                        }
+                        product.remaining_time = Some(self.processing_time);
                         println!("Añadiendo producto {} a la cola RR, tiempo restante: {}ms", 
                                product.id, product.remaining_time.unwrap_or(0));
                         let product_to_queue = product.clone();
@@ -146,9 +144,8 @@ impl Station {
                         let exit_time = SystemTime::now();
 
                         if let Some(existing_step) = product.processing_steps.iter_mut().find(|s| s.station_name == self.name) {
-                            existing_step.exit_time = Some(exit_time); // Actualizamos el tiempo final
+                            existing_step.exit_time = Some(exit_time);
                         } else {
-                            // Primer quantum en esta estación
                             product.processing_steps.push(ProcessingStep {
                                 station_name: self.name.clone(),
                                 entry_time: Some(entry_time),
@@ -162,9 +159,13 @@ impl Station {
                         if new_remaining > 0 {
                             println!("Devolviendo producto {} a la cola, tiempo restante: {}ms", 
                                     product.id, new_remaining);
-                            rr_queue.push(product);
+                            let should_reinsert = true;
+                            if should_reinsert {
+                                rr_queue.push(product);
+                            }
                         } else {
                             println!("Estación {} terminó de procesar producto {}", self.name, product.id);
+                            product.remaining_time = None;
                             self.sender.as_ref().unwrap().send(product).unwrap();
                         }
                     } else if !processed && new_product.is_none() {
@@ -174,9 +175,7 @@ impl Station {
                         match receiver_lock.recv_timeout(Duration::from_millis(500)) {
                             Ok(mut p) => {
                                 drop(receiver_lock);
-                                if p.remaining_time.is_none() {
-                                    p.remaining_time = Some(self.processing_time);
-                                }
+                                p.remaining_time = Some(self.processing_time);
                                 println!("Recibido nuevo producto {} en cola RR (bloqueante)", p.id);
                                 rr_queue.push(p);
                             },

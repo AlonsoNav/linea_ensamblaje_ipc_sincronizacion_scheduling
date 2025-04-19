@@ -83,10 +83,8 @@ impl Station {
             if let Some(ref mut product) = new_product {
                 match self.scheduling_algorithm {
                     SchedulingAlgorithm::FCFS => {
-                        println!("Estación {} procesando producto {} (FCFS)", self.name, product.id);
                         let entry_time = SystemTime::now();
                         thread::sleep(Duration::from_millis(self.processing_time as u64));
-                        println!("Estación {} terminó de procesar producto {} (FCFS)", self.name, product.id);
                         let exit_time = SystemTime::now();
                         product.processing_steps.push(ProcessingStep {
                             station_name: self.name.clone(),
@@ -117,10 +115,8 @@ impl Station {
                         match receiver_lock.recv() {
                             Ok(mut p) => {
                                 drop(receiver_lock);
-                                println!("Estación {} procesando producto {} (FCFS - bloqueante)", self.name, p.id);
                                 let entry_time = SystemTime::now();
                                 thread::sleep(Duration::from_millis(self.processing_time as u64));
-                                println!("Estación {} terminó de procesar producto {} (FCFS - bloqueante)", self.name, p.id);
                                 let exit_time = SystemTime::now();
                                 p.processing_steps.push(ProcessingStep {
                                     station_name: self.name.clone(),

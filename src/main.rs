@@ -17,7 +17,7 @@ const STAGES: &[(&str, usize)] = &[
     ("Ensamblaje", 1500),
     ("Empaque", 800),
 ];
-const DEFAULT_QUANTUM: usize = 500; // Default time quantum for Round Robin (in milliseconds)
+const DEFAULT_QUANTUM: usize = 500;
 
 fn main() {
     let mut stations: Vec<Station> = Vec::new();
@@ -67,6 +67,7 @@ fn main() {
         station.start();
     }
 
+    let start_time = SystemTime::now(); 
     // Generate and send the products
     for i in 1..=PRODUCT_COUNT {
         let arrival_time = SystemTime::now() + Duration::from_millis(rng.random_range(0..5000)); // Random arrival time between 0 and 5 seconds 
@@ -74,7 +75,7 @@ fn main() {
             id: i,
             arrival_time,
             processing_steps: vec![],
-            remaining_time: None, // Will be initialized at each station
+            remaining_time: None,
         };
         products.push(product);
     }
@@ -86,10 +87,10 @@ fn main() {
     let mut product_queue: VecDeque<Product> = VecDeque::from(products);
 
     // Send products to the first station based on arrival time
-    while let Some(product) = product_queue.pop_front() {
+    while let Some(mut product) = product_queue.pop_front() {
         let now = SystemTime::now();
         if product.arrival_time <= now {
-            println!("Enviando producto {} a la primera estación.", product.id);
+            product.arrival_time = now; // The real arrival time is now
             senders[0].send(product).unwrap();
         } else {
             // If the product hasn't arrived yet, reinsert it into the queue
@@ -103,14 +104,6 @@ fn main() {
     // Get the products processed by the main channel
     for _ in 1..=PRODUCT_COUNT {
         let processed_product = main_receiver.recv().unwrap();
-        println!("\nProducto {} procesado.", processed_product.id);
-        // println!(
-        //     "Producto procesado: ID: {}, Hora de llegada: {:?}, Pasos de procesamiento: {:?}, Tiempo restante: {:?}",
-        //     processed_product.id,
-        //     processed_product.arrival_time,
-        //     processed_product.processing_steps,
-        //     processed_product.remaining_time
-        // );
         processed_products.push(processed_product.clone());
     }
 
@@ -139,21 +132,21 @@ fn main() {
             .as_secs_f64();
     
         println!("\nProducto {}", product.id);
-        println!("Tiempo de llegada: {:.1}s", 0.0);
+        println!("Tiempo de llegada: {:.1}s", product.arrival_time.duration_since(start_time).unwrap().as_secs_f64());
     
         let mut total_wait = 0.0;
     
         for (i, step) in product.processing_steps.iter().enumerate() {
-            let entry = step.entry_time.unwrap().duration_since(product.arrival_time).unwrap().as_secs_f64();
-            let exit = step.exit_time.unwrap().duration_since(product.arrival_time).unwrap().as_secs_f64();
+            let entry = step.entry_time.unwrap().duration_since(start_time).unwrap().as_secs_f64();
+            let exit = step.exit_time.unwrap().duration_since(start_time).unwrap().as_secs_f64();
         
             let prev_exit = if i == 0 {
-                0.0
+                product.arrival_time.duration_since(start_time).unwrap().as_secs_f64()
             } else {
                 product.processing_steps[i - 1]
                     .exit_time
                     .unwrap()
-                    .duration_since(product.arrival_time)
+                    .duration_since(start_time)
                     .unwrap()
                     .as_secs_f64()
             };

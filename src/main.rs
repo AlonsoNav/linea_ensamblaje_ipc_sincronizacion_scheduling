@@ -114,13 +114,28 @@ fn main() {
     let mut orden_final: Vec<usize> = Vec::new();
     
     for product in &processed_products {
-        if product.processing_steps.is_empty() {
-            println!("\nProducto {} no tiene pasos registrados.", product.id);
-            continue;
+        println!("\nProducto {}:", product.id);
+    
+        // Variables para tiempo de espera y turnaround
+        let mut previous_exit: Option<f64> = None;
+        let mut total_wait = 0.0;
+    
+        // Mostrar pasos y acumular espera
+        for step in &product.processing_steps {
+            let entry = step.entry_time.unwrap().duration_since(start_time).unwrap().as_secs_f64();
+            let exit = step.exit_time.unwrap().duration_since(start_time).unwrap().as_secs_f64();
+    
+            println!("  Estación: {}, Entrada: {:.3}s, Salida: {:.3}s", step.station_name, entry, exit);
+    
+            if let Some(prev_exit) = previous_exit {
+                let wait = entry - prev_exit;
+                total_wait += wait;
+            }
+    
+            previous_exit = Some(exit);
         }
     
-        orden_final.push(product.id);
-    
+        // Turnaround = salida final - llegada
         let turnaround = product
             .processing_steps
             .last()
@@ -131,35 +146,13 @@ fn main() {
             .unwrap()
             .as_secs_f64();
     
-        println!("\nProducto {}", product.id);
-        println!("Tiempo de llegada: {:.1}s", product.arrival_time.duration_since(start_time).unwrap().as_secs_f64());
-    
-        let mut total_wait = 0.0;
-    
-        for (i, step) in product.processing_steps.iter().enumerate() {
-            let entry = step.entry_time.unwrap().duration_since(start_time).unwrap().as_secs_f64();
-            let exit = step.exit_time.unwrap().duration_since(start_time).unwrap().as_secs_f64();
-        
-            let prev_exit = if i == 0 {
-                product.arrival_time.duration_since(start_time).unwrap().as_secs_f64()
-            } else {
-                product.processing_steps[i - 1]
-                    .exit_time
-                    .unwrap()
-                    .duration_since(start_time)
-                    .unwrap()
-                    .as_secs_f64()
-            };
-        
-            total_wait += entry - prev_exit;
-        
-            println!("{}: entrada = {:.3}s, salida = {:.3}s", step.station_name, entry, exit);
-        }
-    
-        println!("Tiempo de espera total: {:.3}s, Turnaround: {:.3}s", total_wait, turnaround);
+        println!("  ➤ Tiempo de llegada: {:.3}s", product.arrival_time.duration_since(start_time).unwrap().as_secs_f64());
+        println!("  ➤ Tiempo de espera total: {:.3}s", total_wait);
+        println!("  ➤ Turnaround: {:.3}s", turnaround);
     
         total_wait_sum += total_wait;
         total_turnaround_sum += turnaround;
+        orden_final.push(product.id);
     }
     
     let count = processed_products.len() as f64;

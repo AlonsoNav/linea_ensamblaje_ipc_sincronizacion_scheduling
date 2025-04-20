@@ -143,15 +143,11 @@ impl Station {
                         thread::sleep(Duration::from_millis(process_time as u64));
                         let exit_time = SystemTime::now();
 
-                        if let Some(existing_step) = product.processing_steps.iter_mut().find(|s| s.station_name == self.name) {
-                            existing_step.exit_time = Some(exit_time);
-                        } else {
-                            product.processing_steps.push(ProcessingStep {
-                                station_name: self.name.clone(),
-                                entry_time: Some(entry_time),
-                                exit_time: Some(exit_time),
-                            });
-                        }
+                        product.processing_steps.push(ProcessingStep {
+                            station_name: self.name.clone(),
+                            entry_time: Some(entry_time),
+                            exit_time: Some(exit_time),
+                        });
                         
                         let new_remaining = remaining.saturating_sub(process_time);
                         product.remaining_time = Some(new_remaining);

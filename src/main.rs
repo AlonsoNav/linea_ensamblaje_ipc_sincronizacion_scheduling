@@ -114,10 +114,11 @@ fn main() {
     
     for product in &processed_products {
         println!("\nProducto {}:", product.id);
-        println!("  ➤ Tiempo de llegada: {:.3}s", product.arrival_time.duration_since(start_time).unwrap().as_secs_f64());
+        let arrival_time = product.arrival_time.duration_since(start_time).unwrap().as_secs_f64();
+        println!("  ➤ Tiempo de llegada: {:.3}s", arrival_time);
     
         // Variables para tiempo de espera y turnaround
-        let mut previous_exit: Option<f64> = None;
+        let mut previous_exit = Some(arrival_time);
         let mut total_wait = 0.0;
     
         // Mostrar pasos y acumular espera

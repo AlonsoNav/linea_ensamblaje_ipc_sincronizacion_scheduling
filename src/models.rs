@@ -90,11 +90,6 @@ impl Station {
                         let remaining = product.remaining_time.unwrap();
                         let process_time = std::cmp::min(self.quantum, remaining);
                         
-                        println!(
-                            "Estación {} procesando producto {} por {}ms (tiempo restante: {}ms)",
-                            self.name, product.id, process_time, remaining
-                        );
-                        
                         // Procesar el producto por el tiempo del quantum
                         let entry_time = SystemTime::now();
                         thread::sleep(Duration::from_millis(process_time as u64));
@@ -117,10 +112,7 @@ impl Station {
                         // Decidir qué hacer con el producto actual
                         if new_remaining == 0 {
                             // Si el producto ha terminado, enviarlo a la siguiente estación
-                            println!(
-                                "Estación {} terminó de procesar producto {}",
-                                self.name, product.id
-                            );
+                            product.remaining_time = None; // Limpiar el tiempo restante
                             if let Some(sender) = &self.sender {
                                 sender.send(product).unwrap();
                             }
@@ -134,10 +126,6 @@ impl Station {
                             }
                         } else {
                             // Si el producto aún no ha terminado, devolverlo a la cola
-                            println!(
-                                "Producto {} regresa a la cola con tiempo restante: {}ms",
-                                product.id, new_remaining
-                            );
                             queue.insert(current_index, product);
                             
                             // Avanzar al siguiente producto en la cola
@@ -152,7 +140,6 @@ impl Station {
                         match receiver_lock.recv_timeout(Duration::from_millis(500)) {
                             Ok(p) => {
                                 drop(receiver_lock);
-                                println!("Recibido nuevo producto {} en cola RR (bloqueante)", p.id);
                                 queue.push(p);
                             }
                             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -177,11 +164,6 @@ impl Station {
                         p.remaining_time = Some(self.processing_time);
                     }
                     
-                    println!(
-                        "Añadiendo producto {} a la cola RR, tiempo restante: {}ms", 
-                        p.id, p.remaining_time.unwrap()
-                    );
-                    
                     rr_queue.push(p);
                 },
                 Err(mpsc::TryRecvError::Empty) => break,
@@ -197,22 +179,12 @@ impl Station {
             Ok(mut p) => {
                 drop(receiver_lock);
                 
-                println!(
-                    "Estación {} recibió producto {} (FCFS), procesando por {}ms",
-                    self.name, p.id, self.processing_time
-                );
-                
                 let entry_time = SystemTime::now();
                 
                 // Asegurarse de que el procesamiento tome el tiempo completo
                 thread::sleep(Duration::from_millis(self.processing_time as u64));
                 
                 let exit_time = SystemTime::now();
-                
-                println!(
-                    "Estación {} completó producto {} (FCFS)",
-                    self.name, p.id
-                );
                 
                 p.processing_steps.push(ProcessingStep {
                     station_name: self.name.clone(),

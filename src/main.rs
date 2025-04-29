@@ -114,7 +114,7 @@ fn main() {
     
     for product in &processed_products {
         println!("\nProducto {}:", product.id);
-        println!("  Tiempo de llegada del producto: {:.3}s", product.arrival_time.duration_since(start_time).unwrap().as_secs_f64());
+        println!("  ➤ Tiempo de llegada: {:.3}s", product.arrival_time.duration_since(start_time).unwrap().as_secs_f64());
     
         // Variables para tiempo de espera y turnaround
         let mut previous_exit: Option<f64> = None;
@@ -146,7 +146,7 @@ fn main() {
             .unwrap()
             .as_secs_f64();
     
-        println!("  ➤ Tiempo de llegada: {:.3}s", product.arrival_time.duration_since(start_time).unwrap().as_secs_f64());
+        
         println!("  ➤ Tiempo de espera total: {:.3}s", total_wait);
         println!("  ➤ Turnaround: {:.3}s", turnaround);
     

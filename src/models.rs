@@ -65,117 +65,97 @@ impl Station {
     }
 
     fn run(&self) {
-        let mut rr_queue = Vec::new();
+        let mut queue = Vec::new();
+        let mut current_index = 0;
         
         loop {
-            let mut new_product = None;
-            
-            {
-                let receiver_lock = self.receiver.lock().unwrap();
-                match receiver_lock.try_recv() {
-                    Ok(p) => new_product = Some(p),
-                    Err(mpsc::TryRecvError::Empty) => {},
-                    Err(mpsc::TryRecvError::Disconnected) => break,
-                }
-            }
-            
-            let mut processed = false;
-            if let Some(ref mut product) = new_product {
-                match self.scheduling_algorithm {
-                    SchedulingAlgorithm::FCFS => {
-                        let entry_time = SystemTime::now();
-                        thread::sleep(Duration::from_millis(self.processing_time as u64));
-                        let exit_time = SystemTime::now();
-                        product.processing_steps.push(ProcessingStep {
-                            station_name: self.name.clone(),
-                            entry_time: Some(entry_time),
-                            exit_time: Some(exit_time),
-                        });
-                        let product_to_send = product.clone();
-                        self.sender.as_ref().unwrap().send(product_to_send).unwrap();
-                        processed = true;
-                        continue;
-                    },
-                    SchedulingAlgorithm::RoundRobin => {
-                        if product.remaining_time.is_none() {
-                            product.remaining_time = Some(self.processing_time);
-                        }
-                        println!("Añadiendo producto {} a la cola RR, tiempo restante: {}ms", 
-                               product.id, product.remaining_time.unwrap_or(0));
-                        let product_to_queue = product.clone();
-                        rr_queue.push(product_to_queue);
-                    },
-                }
-            }
+            // Verificar si hay nuevos productos y añadirlos a la cola
+            self.check_for_new_products(&mut queue);
             
             match self.scheduling_algorithm {
                 SchedulingAlgorithm::FCFS => {
-                    if !processed && new_product.is_none() {
-                        let receiver_lock = self.receiver.lock().unwrap();
-                        match receiver_lock.recv() {
-                            Ok(mut p) => {
-                                drop(receiver_lock);
-                                let entry_time = SystemTime::now();
-                                thread::sleep(Duration::from_millis(self.processing_time as u64));
-                                let exit_time = SystemTime::now();
-                                p.processing_steps.push(ProcessingStep {
-                                    station_name: self.name.clone(),
-                                    entry_time: Some(entry_time),
-                                    exit_time: Some(exit_time),
-                                });
-                                self.sender.as_ref().unwrap().send(p).unwrap();
-                            }
-                            Err(_) => break,
-                        }
-                    }
+                    self.process_fcfs();
                 },
                 
                 SchedulingAlgorithm::RoundRobin => {
-                    if !rr_queue.is_empty() {
-                        let mut product = rr_queue.remove(0);
+                    if !queue.is_empty() {
+                        // Procesar el producto en la posición actual del iterador
+                        let mut product = queue.remove(current_index);
                         
-                        let remaining = product.remaining_time.unwrap_or(self.processing_time);
+                        // Inicializar remaining_time si es necesario
+                        if product.remaining_time.is_none() {
+                            product.remaining_time = Some(self.processing_time);
+                        }
                         
+                        let remaining = product.remaining_time.unwrap();
                         let process_time = std::cmp::min(self.quantum, remaining);
                         
-                        println!("Estación {} procesando producto {} por {}ms (tiempo restante: {}ms)", 
-                                 self.name, product.id, process_time, remaining);
+                        println!(
+                            "Estación {} procesando producto {} por {}ms (tiempo restante: {}ms)",
+                            self.name, product.id, process_time, remaining
+                        );
                         
+                        // Procesar el producto por el tiempo del quantum
                         let entry_time = SystemTime::now();
                         thread::sleep(Duration::from_millis(process_time as u64));
                         let exit_time = SystemTime::now();
-
+                        
+                        // Registrar el paso de procesamiento
                         product.processing_steps.push(ProcessingStep {
                             station_name: self.name.clone(),
                             entry_time: Some(entry_time),
                             exit_time: Some(exit_time),
                         });
                         
+                        // Actualizar el tiempo restante
                         let new_remaining = remaining.saturating_sub(process_time);
                         product.remaining_time = Some(new_remaining);
                         
-                        if new_remaining > 0 {
-                            println!("Devolviendo producto {} a la cola, tiempo restante: {}ms", 
-                                    product.id, new_remaining);
-                            rr_queue.push(product);
+                        // Comprobar si hay nuevos productos después del quantum
+                        self.check_for_new_products(&mut queue);
+                        
+                        // Decidir qué hacer con el producto actual
+                        if new_remaining == 0 {
+                            // Si el producto ha terminado, enviarlo a la siguiente estación
+                            println!(
+                                "Estación {} terminó de procesar producto {}",
+                                self.name, product.id
+                            );
+                            if let Some(sender) = &self.sender {
+                                sender.send(product).unwrap();
+                            }
+                            // No reinsertamos el producto en la cola
+                            
+                            // Ajustar el índice si es necesario
+                            if !queue.is_empty() {
+                                current_index %= queue.len();
+                            } else {
+                                current_index = 0;
+                            }
                         } else {
-                            println!("Estación {} terminó de procesar producto {}", self.name, product.id);
-                            self.sender.as_ref().unwrap().send(product).unwrap();
+                            // Si el producto aún no ha terminado, devolverlo a la cola
+                            println!(
+                                "Producto {} regresa a la cola con tiempo restante: {}ms",
+                                product.id, new_remaining
+                            );
+                            queue.insert(current_index, product);
+                            
+                            // Avanzar al siguiente producto en la cola
+                            current_index = (current_index + 1) % queue.len().max(1);
                         }
-                    } else if !processed && new_product.is_none() {
+                    } else {
+                        // Si la cola está vacía, esperar un poco
                         thread::sleep(Duration::from_millis(100));
                         
+                        // Intentar recibir un nuevo producto (bloqueante con timeout)
                         let receiver_lock = self.receiver.lock().unwrap();
                         match receiver_lock.recv_timeout(Duration::from_millis(500)) {
-                            Ok(mut p) => {
+                            Ok(p) => {
                                 drop(receiver_lock);
-                                if p.remaining_time.is_none() {
-                                    p.remaining_time = Some(self.processing_time);
-                                }
                                 println!("Recibido nuevo producto {} en cola RR (bloqueante)", p.id);
-                                rr_queue.push(p);
-                            },
-                            Err(mpsc::RecvTimeoutError::Timeout) => {},
+                                queue.push(p);
+                            }
+                            Err(mpsc::RecvTimeoutError::Timeout) => {}
                             Err(mpsc::RecvTimeoutError::Disconnected) => break,
                         }
                     }
@@ -183,5 +163,68 @@ impl Station {
             }
         }
     }
+    
+    // Método para revisar si hay nuevos productos y añadirlos a la cola
+    fn check_for_new_products(&self, rr_queue: &mut Vec<Product>) {
+        let receiver_lock = self.receiver.lock().unwrap();
+        
+        // Intentar recibir todos los productos disponibles
+        loop {
+            match receiver_lock.try_recv() {
+                Ok(mut p) => {
+                    // Inicializar remaining_time si es necesario
+                    if p.remaining_time.is_none() {
+                        p.remaining_time = Some(self.processing_time);
+                    }
+                    
+                    println!(
+                        "Añadiendo producto {} a la cola RR, tiempo restante: {}ms", 
+                        p.id, p.remaining_time.unwrap()
+                    );
+                    
+                    rr_queue.push(p);
+                },
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => break,
+            }
+        }
+    }
+    
+    // Método para procesar con FCFS
+    fn process_fcfs(&self) {
+        let receiver_lock = self.receiver.lock().unwrap();
+        match receiver_lock.recv() {
+            Ok(mut p) => {
+                drop(receiver_lock);
+                
+                println!(
+                    "Estación {} recibió producto {} (FCFS), procesando por {}ms",
+                    self.name, p.id, self.processing_time
+                );
+                
+                let entry_time = SystemTime::now();
+                
+                // Asegurarse de que el procesamiento tome el tiempo completo
+                thread::sleep(Duration::from_millis(self.processing_time as u64));
+                
+                let exit_time = SystemTime::now();
+                
+                println!(
+                    "Estación {} completó producto {} (FCFS)",
+                    self.name, p.id
+                );
+                
+                p.processing_steps.push(ProcessingStep {
+                    station_name: self.name.clone(),
+                    entry_time: Some(entry_time),
+                    exit_time: Some(exit_time),
+                });
+                
+                if let Some(sender) = &self.sender {
+                    sender.send(p).unwrap();
+                }
+            }
+            Err(_) => {},
+        }
+    }
 }
-

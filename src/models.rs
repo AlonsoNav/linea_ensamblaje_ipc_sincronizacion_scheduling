@@ -74,7 +74,45 @@ impl Station {
             
             match self.scheduling_algorithm {
                 SchedulingAlgorithm::FCFS => {
-                    self.process_fcfs();
+                    if !queue.is_empty() {
+                        let mut product = queue.remove(0); // Tomar el primero (FCFS)
+                        
+                        let entry_time = SystemTime::now();
+                        thread::sleep(Duration::from_millis(self.processing_time as u64));
+                        let exit_time = SystemTime::now();
+                        
+                        product.processing_steps.push(ProcessingStep {
+                            station_name: self.name.clone(),
+                            entry_time: Some(entry_time),
+                            exit_time: Some(exit_time),
+                        });
+                        
+                        if let Some(sender) = &self.sender {
+                            sender.send(product).unwrap();
+                        }
+                    } else {
+                        // Si no hay productos en la cola, hacer un recv bloqueante
+                        let receiver_lock = self.receiver.lock().unwrap();
+                        match receiver_lock.recv() {
+                            Ok(mut p) => {
+                                drop(receiver_lock);
+                                let entry_time = SystemTime::now();
+                                thread::sleep(Duration::from_millis(self.processing_time as u64));
+                                let exit_time = SystemTime::now();
+                                
+                                p.processing_steps.push(ProcessingStep {
+                                    station_name: self.name.clone(),
+                                    entry_time: Some(entry_time),
+                                    exit_time: Some(exit_time),
+                                });
+                                
+                                if let Some(sender) = &self.sender {
+                                    sender.send(p).unwrap();
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
                 },
                 
                 SchedulingAlgorithm::RoundRobin => {
@@ -169,34 +207,6 @@ impl Station {
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => break,
             }
-        }
-    }
-    
-    // Método para procesar con FCFS
-    fn process_fcfs(&self) {
-        let receiver_lock = self.receiver.lock().unwrap();
-        match receiver_lock.recv() {
-            Ok(mut p) => {
-                drop(receiver_lock);
-                
-                let entry_time = SystemTime::now();
-                
-                // Asegurarse de que el procesamiento tome el tiempo completo
-                thread::sleep(Duration::from_millis(self.processing_time as u64));
-                
-                let exit_time = SystemTime::now();
-                
-                p.processing_steps.push(ProcessingStep {
-                    station_name: self.name.clone(),
-                    entry_time: Some(entry_time),
-                    exit_time: Some(exit_time),
-                });
-                
-                if let Some(sender) = &self.sender {
-                    sender.send(p).unwrap();
-                }
-            }
-            Err(_) => {},
         }
     }
 }

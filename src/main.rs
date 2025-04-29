@@ -8,7 +8,6 @@ use std::collections::VecDeque;
 use std::io;
 use crate::models::Station;
 use crate::models::Product;
-use crate::models::ProcessingStep;
 use crate::models::SchedulingAlgorithm;
 
 const PRODUCT_COUNT: usize = 10;
@@ -23,7 +22,7 @@ fn main() {
     let mut stations: Vec<Station> = Vec::new();
     let mut senders = Vec::new();
     let mut products = Vec::new();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     
     // Select scheduling algorithm
     let scheduling_algorithm = select_scheduling_algorithm();
@@ -70,7 +69,7 @@ fn main() {
     let start_time = SystemTime::now(); 
     // Generate and send the products
     for i in 1..=PRODUCT_COUNT {
-        let arrival_time = SystemTime::now() + Duration::from_millis(rng.gen_range(0..5000));
+        let arrival_time = SystemTime::now() + Duration::from_millis(rng.random_range(0..5000));
         let product = Product {
             id: i,
             arrival_time,
